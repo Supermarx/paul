@@ -1,5 +1,7 @@
 #pragma once
 
+#include <iostream>
+
 #include <boost/optional.hpp>
 #include <boost/program_options.hpp>
 
@@ -18,8 +20,7 @@ public:
 		std::string config;
 	};
 
-private:
-	static int read_commandline(options& opt, int argc, char** argv)
+	static int read_commandline(options& opt, std::vector<std::string>& args)
 	{
 		boost::program_options::options_description o_general("Options");
 		o_general.add_options()
@@ -32,14 +33,9 @@ private:
 		boost::program_options::options_description options("Allowed options");
 		options.add(o_general);
 
-		try
-		{
-			boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(options).run(), vm);
-		} catch(boost::program_options::unknown_option &e)
-		{
-			std::cerr << "Unknown option --" << e.get_option_name() << ", see --help." << std::endl;
-			return EXIT_FAILURE;
-		}
+		boost::program_options::parsed_options parsed(boost::program_options::command_line_parser(args).options(options).allow_unregistered().run());
+		boost::program_options::store(parsed, vm);
+		args = boost::program_options::collect_unrecognized(parsed.options, boost::program_options::include_positional);
 
 		try
 		{
@@ -76,8 +72,7 @@ private:
 		return EXIT_SUCCESS;
 	}
 
-public:
-	static int read_action(options& opt, int argc, char** argv)
+	static int read_action(options& opt, std::vector<std::string>& args)
 	{
 		std::string action_tmp;
 
@@ -90,13 +85,9 @@ public:
 		options.add_options()
 				("action", boost::program_options::value(&action_tmp), "");
 
-		try
-		{
-			boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(options).positional(pos).run(), vm);
-		} catch(boost::program_options::unknown_option)
-		{
-			// Do nothing
-		}
+		boost::program_options::parsed_options parsed(boost::program_options::command_line_parser(args).options(options).positional(pos).allow_unregistered().run());
+		boost::program_options::store(parsed, vm);
+		args = boost::program_options::collect_unrecognized(parsed.options, boost::program_options::include_positional);
 
 		try
 		{
@@ -113,13 +104,43 @@ public:
 		return EXIT_SUCCESS;
 	}
 
-	static int read_options(options& opt, int argc, char** argv)
+	static int read_action(options& opt, std::vector<std::string> const& args)
 	{
-		int ret_action = read_action(opt, argc, argv);
-		if(ret_action != EXIT_SUCCESS)
-			return ret_action;
+		auto tmp_args(args);
+		int ret_action = read_action(opt, tmp_args);
 
-		return read_commandline(opt, argc, argv);
+		if(!tmp_args.empty())
+		{
+			std::cerr << "Unrecognized commandline argument(s):";
+			for(auto const& arg : tmp_args)
+				std::cerr << ' ' << arg;
+			std::cerr << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		return ret_action;
+	}
+
+	static int read_options(options& opt, std::vector<std::string> const& args)
+	{
+		auto tmp_args(args);
+
+		int ret_commandline = read_commandline(opt, tmp_args);
+		if(ret_commandline != EXIT_SUCCESS)
+			return ret_commandline;
+
+		int ret_action = read_action(opt, tmp_args);
+
+		if(!tmp_args.empty())
+		{
+			std::cerr << "Unrecognized commandline argument(s):";
+			for(auto const& arg : tmp_args)
+				std::cerr << ' ' << arg;
+			std::cerr << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		return ret_action;
 	}
 };
 
